@@ -1,0 +1,23 @@
+#!/bin/bash
+
+HOMEDIR=/home/batesste/zone-device-test
+MODDIR=$HOMEDIR/modules
+TSTDIR=$HOMEDIR
+
+#umount /dev/mtramonb1
+#rmmod mtramonb
+#insmod $MODDIR/mem_map/mem_map.ko
+
+set -e
+
+if [ ! -e /mnt/mtr/tst ]; then
+
+    #insmod $MODDIR/mtramonb/mtramonb.ko
+    #mkfs.ext4 /dev/mtramonb1 -b 4096 || true
+    #mkdir -p /mnt/mtr
+    #mount -o dax /dev/mtramonb1 /mnt/mtr
+    dd if=/dev/zero of=/mnt/mtr/tst bs=1M count=1
+
+fi
+
+$TSTDIR/nvme_user_io tst /mnt/mtr_nvme/test.dat | hd
