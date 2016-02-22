@@ -1,23 +1,164 @@
 #!/bin/bash
+########################################################################
+##
+## Copyright 2016 PMC-Sierra, Inc.
+##
+########################################################################
 
-HOMEDIR=/home/batesste/zone-device-test
-MODDIR=$HOMEDIR/modules
-TSTDIR=$HOMEDIR
-
-#umount /dev/mtramonb1
-#rmmod mtramonb
-#insmod $MODDIR/mem_map/mem_map.ko
+########################################################################
+##
+##   Description:
+##     A simple shell script to setup and test DAX based FS on PMEM
+##     and IOPMEM devices.
+##
+########################################################################
 
 set -e
 
-if [ ! -e /mnt/mtr/tst ]; then
+MODULE_DIR=./modules
+KERNEL_DIR=""
+BUILD=0
+UNLOAD=0
+FORCE=0
 
-    #insmod $MODDIR/mtramonb/mtramonb.ko
-    #mkfs.ext4 /dev/mtramonb1 -b 4096 || true
-    #mkdir -p /mnt/mtr
-    #mount -o dax /dev/mtramonb1 /mnt/mtr
-    dd if=/dev/zero of=/mnt/mtr/tst bs=1M count=1
+PMEM_DEV=/dev/pmem0
+PMEM_MNT=/mnt/pmem
 
+IOPMEM_DEV=/dev/mtramonb1
+IOPMEM_MNT=/mnt/mtramonb
+
+NVME_DEV=/dev/nvme0n1
+NVME_MNT=/mnt/nvme
+
+help()
+{
+    echo Help!
+}
+
+check_module()
+{
+    if lsmod | grep "$1" &> /dev/null ; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+  # Accept some key parameter changes from the command line.
+while getopts "hm:k:buf" opt; do
+    case "$opt" in
+	    h)  help
+            exit 1
+            ;;
+	    m)  MODULE_DIR=${OPTARG}
+            ;;
+	    k)  KERNEL_DIR=${OPTARG}
+            ;;
+	    b)  BUILD=1
+            ;;
+	    u)  UNLOAD=1
+            ;;
+	    f)  FORCE=1
+            ;;
+	    \?)
+	        echo "Invalid option: -$OPTARG" >&2
+	        exit 1
+	        ;;
+	    :)
+	        echo "Option -$OPTARG requires an argument." >&2
+	        exit 1
+	        ;;
+    esac
+done
+
+  # If requested unload the relevant kernel modules (mem_mep and
+  # mtramonb). We error out if this command is requested but fails for
+  # some reason. Note for the mtramonb module we first have to unmount
+  # any mounted devices for this to work. Note we exit after this
+  # command.
+
+if [ "$UNLOAD" = 1 ]; then
+    set +e
+    rmmod ${MODULE_DIR}/mem_map/mem_map.ko
+    rmmod ${MODULE_DIR}/mtramonb/mtramonb.ko
+
+    exit 1
 fi
 
-$TSTDIR/nvme_user_io tst /mnt/mtr_nvme/test.dat | hd
+  # If requested clean and rebuild the modules and test scripts. If
+  # provided use the requested folder for kernel source. Not we exit
+  # after the build.
+
+if [ "$BUILD" = 1 ]; then
+    if [ ! -z $KERNEL_DIR ]; then
+       echo "Building modules using ${KERNEL_DIR} as build folder."
+       KERNEL_DIR="KDIR=$KERNEL_DIR"
+       echo $KERNEL_DIR
+    fi
+    make clean && make && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map clean && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/mtramonb clean && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/mtramonb
+
+    exit 1
+fi
+
+  # Now that we have the modules unloads and compiled (if requested)
+  # we load them here. If for some reason they are already loaded we
+  # error here unless FORCE is set.
+
+if [ "$FORCE" = 0 ]; then
+    if check_module mem_map || check_module mtramonb ; then
+        echo "run_test: One more modules already loaded!"
+        exit 1
+    fi
+fi
+
+if ! check_module mem_map ; then
+   insmod ${MODULE_DIR}/mem_map/mem_map.ko
+else
+    echo "run_test: Warning mem_map was already loaded!"
+fi
+
+if ! check_module mtramonb ; then
+    insmod ${MODULE_DIR}/mtramonb/mtramonb.ko vendor_id=0x8086 \
+           device_id=0x5845 bar_id=2
+else
+    echo "run_test: Warning mtramonb was already loaded!"
+fi
+
+  # Check to see if the IOPMEM device is already mounted. If it is
+  # we error unless FORCE is set. We use mountpoint to do this so
+  # hopefully it is installed.
+
+if mountpoint -q $IOPMEM_MNT ; then
+    if [ "FORCE" = 0 ] ; then
+        echo "run_test: $IOPMEM_DEV is already mounted at $IOPMEM_MNT!"
+        exit 1
+    fi
+else
+    mkfs.ext4 -F -F $IOPMEM_DEV -b 4096
+    mkdir -p $IOPMEM_MNT
+    mount -o dax $IOPMEM_DEV $IOPMEM_MNT
+    dd if=/dev/urandom of=${IOPMEM_MNT}/tst bs=1M count=1
+fi
+
+  # Check to see if the IOPMEM device is already mounted. If it is
+  # we error unless FORCE is set. We use mountpoint to do this so
+  # hopefully it is installed.
+
+if mountpoint -q $PMEM_MNT ; then
+    if [ "FORCE" = 0 ] ; then
+        echo "run_test: $PMEM_DEV is already mounted at $PMEM_MNT!"
+        exit 1
+    fi
+else
+    mkfs.ext4 -F -F $PMEM_DEV -b 4096
+    mkdir -p $PMEM_MNT
+    mount -o dax $PMEM_DEV $PMEM_MNT
+    dd if=/dev/urandom of=${PMEM_MNT}/tst bs=1M count=1
+fi
+
+./nvme_user_io ${IOPMEM_MNT}/tst ${NVME_MNT}/test.dat | hd
+./nvme_user_io ${PMEM_MNT}/tst ${NVME_MNT}/test.dat | hd

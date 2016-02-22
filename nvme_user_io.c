@@ -36,7 +36,7 @@ static void test_submit_io(void *buf, unsigned long lba)
         .slba = lba,
         .nblocks = 0,
         .addr = (__u64) buf,
-        .metadata = (__u64) meta,
+        .metadata = 0,//(__u64) meta,
     };
 
     fprintf(stderr, "-- Testing NVME submit_io ioctl:\n");
