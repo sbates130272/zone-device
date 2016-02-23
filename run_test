@@ -24,8 +24,8 @@ FORCE=0
 PMEM_DEV=/dev/pmem0
 PMEM_MNT=/mnt/pmem
 
-IOPMEM_DEV=/dev/mtramonb1
-IOPMEM_MNT=/mnt/mtramonb
+IOPMEM_DEV=/dev/iopmem1
+IOPMEM_MNT=/mnt/iopmem
 
 NVME_DEV=/dev/nvme0n1
 NVME_MNT=/mnt/nvme
@@ -72,15 +72,16 @@ while getopts "hm:k:buf" opt; do
 done
 
   # If requested unload the relevant kernel modules (mem_mep and
-  # mtramonb). We error out if this command is requested but fails for
-  # some reason. Note for the mtramonb module we first have to unmount
+  # iopmem). We error out if this command is requested but fails for
+  # some reason. Note for the iopmem module we first have to unmount
   # any mounted devices for this to work. Note we exit after this
   # command.
 
 if [ "$UNLOAD" = 1 ]; then
     set +e
+    umount $IOPMEM_MNT
     rmmod ${MODULE_DIR}/mem_map/mem_map.ko
-    rmmod ${MODULE_DIR}/mtramonb/mtramonb.ko
+    rmmod ${MODULE_DIR}/iopmem/iopmem.ko
 
     exit 1
 fi
@@ -98,8 +99,8 @@ if [ "$BUILD" = 1 ]; then
     make clean && make && \
         make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map clean && \
         make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map && \
-        make ${KERNEL_DIR} -C ${MODULE_DIR}/mtramonb clean && \
-        make ${KERNEL_DIR} -C ${MODULE_DIR}/mtramonb
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/iopmem clean && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/iopmem
 
     exit 1
 fi
@@ -109,7 +110,7 @@ fi
   # error here unless FORCE is set.
 
 if [ "$FORCE" = 0 ]; then
-    if check_module mem_map || check_module mtramonb ; then
+    if check_module mem_map || check_module iopmem ; then
         echo "run_test: One more modules already loaded!"
         exit 1
     fi
@@ -121,11 +122,11 @@ else
     echo "run_test: Warning mem_map was already loaded!"
 fi
 
-if ! check_module mtramonb ; then
-    insmod ${MODULE_DIR}/mtramonb/mtramonb.ko vendor_id=0x8086 \
+if ! check_module iopmem ; then
+    insmod ${MODULE_DIR}/iopmem/iopmem.ko vendor_id=0x8086 \
            device_id=0x5845 bar_id=2
 else
-    echo "run_test: Warning mtramonb was already loaded!"
+    echo "run_test: Warning iopmem was already loaded!"
 fi
 
   # Check to see if the IOPMEM device is already mounted. If it is
