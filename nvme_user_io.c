@@ -1,3 +1,30 @@
+////////////////////////////////////////////////////////////////////////
+//
+// Copyright 2015 Microsemi Corporation, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you
+// may not use this file except in compliance with the License. You may
+// obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0 Unless required by
+// applicable law or agreed to in writing, software distributed under the
+// License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for
+// the specific language governing permissions and limitations under the
+// License.
+//
+////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////
+//
+//   Author: Logan Gunthorpe
+//           Stephen Bates
+//
+//   Description:
+//     A simple user space program to test ZONE_DEVICE and PMEM and
+//     IOPMEM functionality.
+//
+////////////////////////////////////////////////////////////////////////
+
 #define _GNU_SOURCE
 
 #include <linux/nvme.h>
@@ -11,7 +38,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-static void test_mem_map_gup(void *buf)
+struct config {
+    char          *mmap_file;
+    char          *odirect_file;
+    unsigned long lba;
+    void          *buf;
+};
+
+static void test_mem_map_gup(struct config *cfg)
 {
     fprintf(stderr, "-- Testing mem_map GUP:\n");
 
@@ -21,21 +55,21 @@ static void test_mem_map_gup(void *buf)
         return;
     }
 
-    unsigned long ret = ioctl(fd, 0, buf);
+    unsigned long ret = ioctl(fd, 0, cfg->buf);
     fprintf(stderr, "    mem_map result: %lx, %m\n", ret);
 
     close(fd);
 }
 
-static void test_submit_io(void *buf, unsigned long lba)
+static void test_submit_io(struct config *cfg)
 {
     char meta[8192];
 
     struct nvme_user_io iocmd = {
         .opcode = nvme_cmd_read,
-        .slba = lba,
+        .slba = cfg->lba,
         .nblocks = 0,
-        .addr = (__u64) buf,
+        .addr = (__u64) cfg->buf,
         .metadata = 0,//(__u64) meta,
     };
 
@@ -53,17 +87,21 @@ static void test_submit_io(void *buf, unsigned long lba)
 
     close(fd);
 
-    fwrite(buf, 128, 1, stdout);
+    fwrite(cfg->buf, 128, 1, stdout);
 
 }
 
-static void test_odirect(const char *fname, unsigned char *buf)
+static void test_odirect(struct config *cfg)
 {
+
+    unsigned char *buf = cfg->buf;
+
     fprintf(stderr, "-- Testing O_DIRECT:\n");
 
-    int fd = open(fname, O_RDWR | O_DIRECT);
+    int fd = open(cfg->odirect_file, O_RDWR | O_DIRECT);
     if (fd < 0) {
-        fprintf(stderr, "    Could not open odirect file (%s): %m\n", fname);
+        fprintf(stderr, "    Could not open odirect file (%s): %m\n",
+                cfg->odirect_file);
         return;
     }
 
@@ -77,10 +115,10 @@ static void test_odirect(const char *fname, unsigned char *buf)
     close(fd);
 }
 
-static void *create_test_mmap(const char *fname)
+static void *create_test_mmap(struct config *cfg)
 {
     void * buf;
-    int tfd = open(fname, O_RDWR);
+    int tfd = open(cfg->mmap_file, O_RDWR);
     if (tfd < 0) {
         fprintf(stderr, "ERROR: Could not open test file: %m\n");
         exit(-1);
@@ -98,10 +136,10 @@ static void *create_test_mmap(const char *fname)
 
 }
 
-static void test_read_write_buf(unsigned char *buf)
+static void test_read_write_buf(struct config *cfg)
 {
     int i;
-    unsigned int *ibuf = (unsigned int *) buf;
+    unsigned int *ibuf = (unsigned int *) cfg->buf;
 
     fprintf(stderr, "-- Testing mmap read/write:\n");
 
@@ -110,7 +148,7 @@ static void test_read_write_buf(unsigned char *buf)
         fprintf(stderr, " %08x", ibuf[i]);
     fprintf(stderr, "\n");
 
-    strcpy((unsigned char *)buf, "876543210");
+    strcpy((unsigned char *)cfg->buf, "876543210");
 
     fprintf(stderr, "    Wrote:");
     for (i = 0; i < 4; i++)
@@ -120,26 +158,25 @@ static void test_read_write_buf(unsigned char *buf)
 
 int main(int argc, char *argv[])
 {
-    unsigned char *buf;
-
-    const char *fname, *odirect_file;
-    unsigned long lba = 0;
+    struct config cfg = {
+        .lba = 0,
+    };
 
     if (argc == 4) {
-        lba = strtol(argv[3], NULL, 0);
+        cfg.lba = strtol(argv[3], NULL, 0);
     } else if (argc != 3) {
         fprintf(stderr, "USAGE: %s MMAP_FILE ODIRECT_FILE LBA.\n", argv[0]);
         exit(-1);
     }
 
-    fname = argv[1];
-    odirect_file = argv[2];
+    cfg.mmap_file    = argv[1];
+    cfg.odirect_file = argv[2];
 
-    buf = create_test_mmap(fname);
-    test_read_write_buf(buf);
-    test_mem_map_gup(buf);
-    test_submit_io(buf, lba);
-    test_odirect(odirect_file, buf);
+    cfg.buf = create_test_mmap(&cfg);
+    test_read_write_buf(&cfg);
+    test_mem_map_gup(&cfg);
+    test_submit_io(&cfg);
+    test_odirect(&cfg);
 
     fprintf(stderr, "\n\n");
 
