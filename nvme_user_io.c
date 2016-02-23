@@ -43,6 +43,8 @@ struct config {
     char          *odirect_file;
     char          *nvme_device;
     unsigned long lba;
+    int           mmap_len;
+    int           seed;
     void          *buf;
 };
 
@@ -56,8 +58,10 @@ static void test_mem_map_gup(struct config *cfg)
         return;
     }
 
-    unsigned long ret = ioctl(fd, 0, cfg->buf);
-    fprintf(stderr, "    mem_map result: %lx, %m\n", ret);
+    int pfn = ioctl(fd, 0, cfg->buf);
+    int isdevice = ioctl(fd, 1, cfg->buf);
+    fprintf(stderr, "    mem_map result: %lx, (%s) %m\n", pfn,
+            isdevice ? "device" : "not device");
 
     close(fd);
 }
@@ -126,7 +130,7 @@ static void create_test_mmap(struct config *cfg)
         exit(-1);
     }
 
-    buf = mmap(NULL, 8192, PROT_READ | PROT_WRITE, MAP_SHARED, tfd, 0);
+    buf = mmap(NULL, cfg->mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, tfd, 0);
     if (buf == MAP_FAILED) {
         fprintf(stderr, "ERROR: Could not map file: %m\n");
         exit(-1);
@@ -163,6 +167,8 @@ int main(int argc, char *argv[])
     struct config cfg = {
         .nvme_device = "/dev/nvme0n1",
         .lba         = 0,
+        .mmap_len    = 8192,
+        .seed        = time(NULL),
     };
 
     if (argc == 4) {
@@ -171,14 +177,41 @@ int main(int argc, char *argv[])
         fprintf(stderr, "USAGE: %s MMAP_FILE ODIRECT_FILE LBA.\n", argv[0]);
         exit(-1);
     }
-
     cfg.mmap_file    = argv[1];
     cfg.odirect_file = argv[2];
 
+    srand(cfg.seed);
+    fprintf(stderr,"INFO: seed = %d.\n", cfg.seed);
+
+    /*
+     * mmap() the file specifed on the command line. The should have
+     * been created beforehand. We then run the mem_map IOCTL on the
+     * virtual address returned by mmap. If the mmaped file is backed
+     * by ZONE_DEVICE memory we will detect that in both dmesg and in
+     * this program.
+     */
     create_test_mmap(&cfg);
-    test_read_write_buf(&cfg);
     test_mem_map_gup(&cfg);
+
+    /*
+     * Test that we can read and write data via the virtual addresses
+     *provided by mmap. This is a pretty trivial test.
+     */
+    test_read_write_buf(&cfg);
+
+    /*
+     * Test that we can issue a NVMe IO against the mmapped virtual
+     * address range. Note that without struct page backing this IO will
+     * fail.
+    */
     test_submit_io(&cfg);
+
+    /*
+     * Now open a file on a block device in O_DIRECT mode. Ideally
+     * this should be on a NVMe SSD. Check to see if we can read from and
+     * write too this file from our mmaped buffer. Again this will fail
+     * on kernels that do not back IOPMEM with struct page.
+     */
     test_odirect(&cfg);
 
     fprintf(stderr, "\n\n");
