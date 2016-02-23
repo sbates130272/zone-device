@@ -41,6 +41,7 @@
 struct config {
     char          *mmap_file;
     char          *odirect_file;
+    char          *nvme_device;
     unsigned long lba;
     void          *buf;
 };
@@ -73,9 +74,10 @@ static void test_submit_io(struct config *cfg)
         .metadata = 0,//(__u64) meta,
     };
 
-    fprintf(stderr, "-- Testing NVME submit_io ioctl:\n");
+    fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
+        cfg->nvme_device);
 
-    int fd = open("/dev/nvme0n1", O_RDONLY);
+    int fd = open(cfg->nvme_device, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "    Could not open nvme device: %m\n");
         return;
@@ -115,7 +117,7 @@ static void test_odirect(struct config *cfg)
     close(fd);
 }
 
-static void *create_test_mmap(struct config *cfg)
+static void create_test_mmap(struct config *cfg)
 {
     void * buf;
     int tfd = open(cfg->mmap_file, O_RDWR);
@@ -132,7 +134,7 @@ static void *create_test_mmap(struct config *cfg)
 
     close(tfd);
 
-    return buf;
+    cfg->buf = buf;
 
 }
 
@@ -159,7 +161,8 @@ static void test_read_write_buf(struct config *cfg)
 int main(int argc, char *argv[])
 {
     struct config cfg = {
-        .lba = 0,
+        .nvme_device = "/dev/nvme0n1",
+        .lba         = 0,
     };
 
     if (argc == 4) {
@@ -172,7 +175,7 @@ int main(int argc, char *argv[])
     cfg.mmap_file    = argv[1];
     cfg.odirect_file = argv[2];
 
-    cfg.buf = create_test_mmap(&cfg);
+    create_test_mmap(&cfg);
     test_read_write_buf(&cfg);
     test_mem_map_gup(&cfg);
     test_submit_io(&cfg);
