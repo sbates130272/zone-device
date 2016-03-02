@@ -50,7 +50,11 @@ mentioned above except a non-monolithic kernel was used.
 # References
 
 [1] https://lists.01.org/pipermail/linux-nvdimm/2015-August/001810.html
+
 [2] https://github.com/sbates130272/linux-donard/tree/nvme-cmb-rfc-v0
+
 [3] git://git.infradead.org/users/kbusch/qemu-nvme.git
+
 [4] https://github.com/sbates130272/qemu-minimal.git
+
 [5] https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/drivers/nvdimm/pmem.c?id=refs/
