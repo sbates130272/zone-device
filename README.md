@@ -12,6 +12,10 @@ be included in the ZONE_DEVICE framework [2]
 
 # Installing and Running
 
+  ```
+  ./runqemu -pv ../zone-device/kernels/bzImage-zone-device
+  ```
+
 # Running in QEMU Environment
 
 We performed testing on a QEMU machine using Keith Busch's fork of
