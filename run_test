@@ -21,10 +21,14 @@ BUILD=0
 UNLOAD=0
 FORCE=0
 
+BUS_ID=0000:00:05.0
+VENDOR_ID=8086
+DEVICE_ID=5845
+
 PMEM_DEV=/dev/pmem0
 PMEM_MNT=/mnt/pmem
 
-IOPMEM_DEV=/dev/iopmem1
+IOPMEM_DEV=/dev/iopmem0
 IOPMEM_MNT=/mnt/iopmem
 
 NVME_DEV=/dev/nvme0n1
@@ -123,8 +127,12 @@ else
 fi
 
 if ! check_module iopmem ; then
-    insmod ${MODULE_DIR}/iopmem/iopmem.ko vendor_id=0x8086 \
-           device_id=0x5845 bar_id=2
+    insmod ${MODULE_DIR}/iopmem/iopmem.ko bar_id=2
+    set +e
+    echo "$BUS_ID" > /sys/bus/pci/drivers/nvme/unbind
+    echo "$VENDOR_ID $DEVICE_ID" > /sys/bus/pci/drivers/iopmem/new_id
+    echo "$BUS_ID" > /sys/bus/pci/drivers/iopmem/bind
+    set -e
 else
     echo "run_test: Warning iopmem was already loaded!"
 fi
@@ -145,7 +153,7 @@ else
     dd if=/dev/urandom of=${IOPMEM_MNT}/tst bs=1M count=1
 fi
 
-  # Check to see if the IOPMEM device is already mounted. If it is
+  # Check to see if the PMEM device is already mounted. If it is
   # we error unless FORCE is set. We use mountpoint to do this so
   # hopefully it is installed.
 
@@ -161,5 +169,5 @@ else
     dd if=/dev/urandom of=${PMEM_MNT}/tst bs=1M count=1
 fi
 
-./nvme_user_io ${IOPMEM_MNT}/tst ${NVME_MNT}/test.dat | hd
-./nvme_user_io ${PMEM_MNT}/tst ${NVME_MNT}/test.dat | hd
+./test ${IOPMEM_MNT}/tst ${NVME_MNT}/tst | hd
+./test ${PMEM_MNT}/tst ${NVME_MNT}/tst | hd

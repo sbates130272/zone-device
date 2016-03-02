@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set +e
+
+rmmod modules/iopmem/iopmem.ko
+rmmod modules/mem_map/mem_map.ko
+insmod modules/iopmem/iopmem.ko bar_id=2
+insmod modules/mem_map/mem_map.ko

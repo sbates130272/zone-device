@@ -1,0 +1,10 @@
+#!/bin/bash
+
+MNT_LOCAL=/root
+MNT_PMEM=/mnt/pmem
+MNT_IOPMEM=/mnt/iopmem
+MNT_NVME=/mnt/nvme
+
+./test ${MNT_LOCAL}/tst $MNT_NVME/tst
+./test ${MNT_PMEM}/tst $MNT_NVME/tst
+./test ${MNT_IOPMEM}/tst $MNT_NVME/tst

@@ -1,6 +1,6 @@
 CFLAGS=-g
 
-nvme_user_io:
+test:
 
 clean:
-	rm -rf nvme_user_io
+	rm -rf test
