@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////
 //
-// Copyright 2015 Microsemi Corporation, Inc.
+// Copyright 2016 Microsemi Corporation, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you
 // may not use this file except in compliance with the License. You may
@@ -50,7 +50,9 @@ struct config {
     unsigned long lba;
     int           mmap_len;
     int           seed;
-    void          *buf;
+    void          *rand_buf;
+    void          *mmap_buf;
+    unsigned      zone_device;
     unsigned      verbose;
 };
 
@@ -59,11 +61,12 @@ static const struct config defaults = {
     .lba         = 0,
     .mmap_len    = 8192,
     .seed        = -1,
+    .zone_device = 0,
     .verbose     = 0,
 };
 
 static const struct argconfig_commandline_options command_line_options[] = {
-    {"nmve",       "STRING", CFG_STRING, &defaults.nvme_device, required_argument,
+    {"nvme",       "STRING", CFG_STRING, &defaults.nvme_device, required_argument,
             "path to the NVMe block device to use"},
     {"mmap",       "STRING", CFG_STRING, &defaults.mmap_file, required_argument,
             "path to the file to mmap()"},
@@ -72,11 +75,40 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {"m",             "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument, NULL},
     {"mmap_len",      "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument,
             "length of mmap to use"},
+    {"z",             "", CFG_NONE, &defaults.zone_device, no_argument, NULL},
+    {"zone_device",   "", CFG_NONE, &defaults.zone_device, no_argument,
+            "mmap()ed file must reside in ZONE_DEVICE"},
+    {"v",             "", CFG_NONE, &defaults.verbose, no_argument, NULL},
+    {"verbose",       "", CFG_NONE, &defaults.verbose, no_argument,
+            "be verbose"},
     {0}
 };
 
+static int create_random_buf(struct config *cfg)
+{
+    char *buf = malloc(cfg->mmap_len);
+    if ( buf == NULL )
+        return errno;
+    for ( unsigned i=0; i<cfg->mmap_len; i++ )
+        buf[i] = (char)rand();
 
-static int test_mem_map_gup(struct config *cfg)
+    cfg->rand_buf = (void *)buf;
+
+    return 0;
+}
+
+static int compare_buf(void *a, void *b, size_t len)
+{
+    char *ac = (char *)a, *bc = (char *)b;
+
+    for ( unsigned i=0; i<len; i++ )
+        if (ac[i] != bc[i])
+            return i+1;
+
+    return 0;
+}
+
+static int test_mem_map(struct config *cfg)
 {
     fprintf(stderr, "-- Testing mem_map GUP:\n");
 
@@ -86,12 +118,18 @@ static int test_mem_map_gup(struct config *cfg)
         return errno;
     }
 
-    int pfn = ioctl(fd, 0, cfg->buf);
-    int isdevice = ioctl(fd, 1, cfg->buf);
+    int pfn = ioctl(fd, 0, cfg->mmap_buf);
+    int isdevice = ioctl(fd, 1, cfg->mmap_buf);
     fprintf(stderr, "    mem_map result: %lx, (%s) %m\n", pfn,
             isdevice ? "device" : "not device");
 
     close(fd);
+
+    if ( (cfg->zone_device && !isdevice) ||
+         (!cfg->zone_device && isdevice) ) {
+        fprintf(stderr, "    Memory zone type mis-match!\n");
+        return 1;
+    }
     return 0;
 }
 
@@ -103,7 +141,7 @@ static int test_submit_io(struct config *cfg)
         .opcode = nvme_cmd_read,
         .slba = cfg->lba,
         .nblocks = 0,
-        .addr = (__u64) cfg->buf,
+        .addr = (__u64) cfg->mmap_buf,
         .metadata = 0,//(__u64) meta,
     };
 
@@ -122,7 +160,7 @@ static int test_submit_io(struct config *cfg)
 
     close(fd);
 
-    fwrite(cfg->buf, 128, 1, stdout);
+    fwrite(cfg->mmap_buf, 128, 1, stdout);
 
     return 0;
 
@@ -131,7 +169,7 @@ static int test_submit_io(struct config *cfg)
 static int test_odirect(struct config *cfg)
 {
 
-    unsigned char *buf = cfg->buf;
+    unsigned char *buf = cfg->mmap_buf;
 
     fprintf(stderr, "-- Testing O_DIRECT:\n");
 
@@ -153,7 +191,7 @@ static int test_odirect(struct config *cfg)
     return 0;
 }
 
-static int create_test_mmap(struct config *cfg)
+static int create_mmap(struct config *cfg)
 {
     void * buf;
     int tfd = open(cfg->mmap_file, O_RDWR);
@@ -170,32 +208,23 @@ static int create_test_mmap(struct config *cfg)
 
     close(tfd);
 
-    cfg->buf = buf;
+    cfg->mmap_buf = buf;
 
     return 0;
 
 }
 
-static int test_read_write_buf(struct config *cfg)
+static int test_buf(struct config *cfg)
 {
-    int i;
-    unsigned int *ibuf = (unsigned int *) cfg->buf;
+    unsigned char *a = (unsigned char *) cfg->mmap_buf,
+        *b = (unsigned char *) cfg->rand_buf;
 
     fprintf(stderr, "-- Testing mmap read/write:\n");
 
-    fprintf(stderr, "    Read: ");
-    for (i = 0; i < 4; i++)
-        fprintf(stderr, " %08x", ibuf[i]);
-    fprintf(stderr, "\n");
+    for (unsigned i = 0; i<cfg->mmap_len; i++)
+        a[i] = b[i];
 
-    strcpy((unsigned char *)cfg->buf, "876543210");
-
-    fprintf(stderr, "    Wrote:");
-    for (i = 0; i < 4; i++)
-        fprintf(stderr, " %08x", ibuf[i]);
-    fprintf(stderr, "\n");
-
-    return 0;
+    return compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
 }
 
 int main(int argc, char *argv[])
@@ -209,7 +238,17 @@ int main(int argc, char *argv[])
     if (  cfg.seed < 0 )
         cfg.seed = time(NULL);
     srand(cfg.seed);
-    fprintf(stderr,"INFO: seed = %d.\n", cfg.seed);
+    if ( cfg.verbose )
+        fprintf(stderr,"INFO: seed = %d.\n", cfg.seed);
+
+    /*
+     * Generate a buffer full of random data in this processes VMA. We
+     * will use this is a few places to test data movement.
+     */
+    if ( create_random_buf(&cfg) ) {
+        failed = 1;
+        goto out;
+    }
 
     /*
      * mmap() the file specifed on the command line. The should have
@@ -218,11 +257,11 @@ int main(int argc, char *argv[])
      * by ZONE_DEVICE memory we will detect that in both dmesg and in
      * this program.
      */
-    if ( create_test_mmap(&cfg) ) {
+    if ( create_mmap(&cfg) ) {
         failed = 1;
         goto out;
     }
-    if ( test_mem_map_gup(&cfg) ) {
+    if ( test_mem_map(&cfg) ) {
         failed = 1;
         goto out;
     }
@@ -231,7 +270,7 @@ int main(int argc, char *argv[])
      * Test that we can read and write data via the virtual addresses
      *provided by mmap. This is a pretty trivial test.
      */
-    if ( test_read_write_buf(&cfg) ) {
+    if ( test_buf(&cfg) ) {
         failed = 1;
         goto out;
     }
@@ -257,6 +296,7 @@ int main(int argc, char *argv[])
 
 
 out:
+    free(cfg.rand_buf);
     fprintf(stderr, "\n\n");
     if ( failed ){
         if (cfg.verbose)

@@ -25,6 +25,8 @@ BUS_ID=0000:00:05.0
 VENDOR_ID=8086
 DEVICE_ID=5845
 
+LOCAL_MNT=/root
+
 PMEM_DEV=/dev/pmem0
 PMEM_MNT=/mnt/pmem
 
@@ -169,9 +171,14 @@ else
     dd if=/dev/urandom of=${PMEM_MNT}/tst bs=1M count=1
 fi
 
+if [ ! -a ${LOCAL_MNT}/tst ] ; then
+   dd if=/dev/urandom of=${LOCAL_MNT}/tst bs=1M count=1
+fi
+
 if [ ! -a ${NVME_MNT}/tst ] ; then
    dd if=/dev/urandom of=${NVME_MNT}/tst bs=1M count=1
 fi
 
-./test --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
-./test --mmap ${PMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
+./test -v --mmap ${LOCAL_MNT}/tst --odirect ${NVME_MNT}/tst | hd
+./test -vz --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
+./test -vz --mmap ${PMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
