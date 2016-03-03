@@ -179,6 +179,6 @@ if [ ! -a ${NVME_MNT}/tst ] ; then
    dd if=/dev/urandom of=${NVME_MNT}/tst bs=1M count=1
 fi
 
-./test -v --mmap ${LOCAL_MNT}/tst --odirect ${NVME_MNT}/tst | hd
-./test -vz --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
-./test -vz --mmap ${PMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
+./test    --mmap ${LOCAL_MNT}/tst  --odirect ${NVME_MNT}/tst | hd
+./test -z --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
+./test -z --mmap ${PMEM_MNT}/tst   --odirect ${NVME_MNT}/tst | hd
