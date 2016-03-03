@@ -84,6 +84,14 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {0}
 };
 
+static int report(struct config *cfg, const char *func, int val) {
+
+    if ( cfg->verbose )
+        fprintf(stderr,"%s: %d = %s.\n", func, errno, strerror(errno));
+
+    return val;
+}
+
 static int create_random_buf(struct config *cfg)
 {
     char *buf = malloc(cfg->mmap_len);
@@ -110,16 +118,14 @@ static int compare_buf(void *a, void *b, size_t len)
 
 static int test_mem_map(struct config *cfg)
 {
-    if (cfg->verbose)
+    if ( cfg->verbose )
         fprintf(stderr, "-- Testing mem_map GUP:\n");
 
     int fd = open("/dev/mem_map", O_RDWR);
-    if (fd < 0) {
-        fprintf(stderr, "    Could not open /dev/mem_map: %m\n");
-        return errno;
-    }
+    if ( fd < 0 )
+        return report(cfg, "test_mem_map", errno);
 
-    int pfn = ioctl(fd, 0, cfg->mmap_buf);
+    int pfn      = ioctl(fd, 0, cfg->mmap_buf);
     int isdevice = ioctl(fd, 1, cfg->mmap_buf);
     if (cfg->verbose)
         fprintf(stderr, "    mem_map result: %lx, (%s) %m\n", pfn,
@@ -148,16 +154,13 @@ static int test_submit_io(struct config *cfg)
         .metadata = 0,//(__u64) meta,
     };
 
-    if (cfg->verbose)
+    if ( cfg->verbose )
         fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
                 cfg->nvme_device);
 
     int fd = open(cfg->nvme_device, O_RDONLY);
-    if (fd < 0) {
-        if (cfg->verbose)
-            fprintf(stderr, "    Could not open nvme device: %m\n");
-        return errno;
-    }
+    if (fd < 0)
+        return report(cfg, "test_submit_io", errno);
 
     int status = ioctl(fd, NVME_IOCTL_SUBMIT_IO, &iocmd);
 
@@ -181,12 +184,8 @@ static int test_odirect(struct config *cfg)
         fprintf(stderr, "-- Testing O_DIRECT:\n");
 
     int fd = open(cfg->odirect_file, O_RDWR | O_DIRECT);
-    if (fd < 0) {
-        if (cfg->verbose)
-            fprintf(stderr, "    Could not open odirect file (%s): %m\n",
-                    cfg->odirect_file);
-        return errno;
-    }
+    if (fd < 0)
+        return report(cfg, "test_odirect", errno);
 
     if (cfg->verbose)
         fprintf(stderr, "    read result: %d, %m\n", read(fd, &buf[4096], 4096));
@@ -211,10 +210,8 @@ static int create_mmap(struct config *cfg)
     }
 
     buf = mmap(NULL, cfg->mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, tfd, 0);
-    if (buf == MAP_FAILED) {
-        fprintf(stderr, "ERROR: Could not map file: %m\n");
-        return errno;
-    }
+    if (buf == MAP_FAILED)
+        return report(cfg, "create_mmap", errno);
 
     close(tfd);
 
@@ -309,13 +306,8 @@ int main(int argc, char *argv[])
 out:
     free(cfg.rand_buf);
     fprintf(stderr, "\n\n");
-    if ( failed ){
-        if (cfg.verbose)
-            fprintf(stderr,"Failed\n");
-        return -1;
-    } else {
-        if (cfg.verbose)
-            fprintf(stderr,"Passed\n");
-        return 0;
-    }
+    if ( failed )
+        return report(&cfg, "Failed", -1);
+    else
+        return report(&cfg, "Passed", 0);
 }
