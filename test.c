@@ -55,11 +55,12 @@ struct config {
 	void *mmap_buf;
 	unsigned zone_device;
 	unsigned verbose;
+	unsigned do_write_submit_io;
 };
 
 static const struct config defaults = {
 	.nvme_device = "/dev/nvme0n1",
-	.lba = 0,
+	.lba = 100,
 	.mmap_len = 8192,
 	.seed = -1,
 	.zone_device = 0,
@@ -93,6 +94,11 @@ static const struct argconfig_commandline_options command_line_options[] = {
 	{"v", "", CFG_NONE, &defaults.verbose, no_argument, NULL},
 	{"verbose", "", CFG_NONE, &defaults.verbose, no_argument,
 			"be verbose"},
+
+	{"w", "", CFG_NONE, &defaults.do_write_submit_io, no_argument, NULL},
+	{"write-submit_io", "", CFG_NONE, &defaults.do_write_submit_io, no_argument,
+			"do a write submit io: this may trash the filesystem "
+			"on the nvme device"},
 
 	{0}
 };
@@ -243,6 +249,70 @@ static int test_read_submit_io(struct config *cfg)
 	return compare_buf((void *)buf, cfg->mmap_buf, cfg->mmap_len);
 }
 
+static int test_write_submit_io(struct config *cfg)
+{
+	int ret;
+	struct stat stat;
+	char oldbuf[cfg->mmap_len];
+	char buf[cfg->mmap_len];
+
+	int fd = open(cfg->nvme_device, O_RDWR);
+	if (fd < 0)
+		return report(cfg, "test_write_submit_io (open)", errno);
+
+	if (fstat(fd, &stat))
+		return report(cfg, "test_write_submit_io (fstat)", errno);
+
+	lseek(fd, cfg->lba*stat.st_blksize, SEEK_SET);
+	if (read(fd, oldbuf, cfg->mmap_len) != cfg->mmap_len)
+		return report(cfg, "test_write_submit_io (read)", errno);
+
+	if (fsync(fd))
+		return report(cfg, "test_write_submit_io (fsync)", errno);
+
+	if (posix_fadvise(fd, cfg->lba * stat.st_blksize, cfg->mmap_len,
+			  POSIX_FADV_DONTNEED))
+		return report(cfg, "test_write_submit_io (posix_fadvise)", errno);
+
+	memcpy(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+
+	struct nvme_user_io iocmd = {
+		.opcode = nvme_cmd_write,
+		.slba = cfg->lba,
+		.nblocks = cfg->mmap_len / stat.st_blksize,
+		.addr = (__u64) cfg->mmap_buf,
+		.metadata = 0,
+	};
+
+	if (cfg->verbose)
+		fprintf(stderr, "-- Testing NVME write submit_io ioctl on %s:\n",
+			cfg->nvme_device);
+
+
+	int status = ioctl(fd, NVME_IOCTL_SUBMIT_IO, &iocmd);
+
+	if (cfg->verbose)
+		fprintf(stderr, "    ioctl result: %d -- %m\n", status);
+
+	if (status)
+		return status;
+
+	lseek(fd, cfg->lba*stat.st_blksize, SEEK_SET);
+	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len) {
+		ret = report(cfg, "test_write_submit_io (read)", errno);
+		goto write_back;
+	}
+
+	ret = compare_buf(buf, cfg->mmap_buf, cfg->mmap_len);
+
+write_back:
+	lseek(fd, cfg->lba*stat.st_blksize, SEEK_SET);
+	write(fd, oldbuf, cfg->mmap_len);
+	fsync(fd);
+	close(fd);
+	return ret;
+}
+
 static int test_odirect(struct config *cfg)
 {
 
@@ -295,6 +365,12 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (cfg.do_write_submit_io && cfg.lba < 20) {
+		fprintf(stderr, "ERROR: won't write on LBA's less than 20 to "
+			"avoid issues with mounted filesystems.\n");
+		return 1;
+	}
+
 	/*
 	 * Generate a buffer full of random data in this processes VMA. We
 	 * will use this is a few places to test data movement.
@@ -330,7 +406,18 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-	 * Test that we can issue a NVMe IO against the mmapped virtual
+	 * Now open a file on a block device in O_DIRECT mode. Ideally
+	 * this should be on a NVMe SSD. Check to see if we can read from and
+	 * write too this file from our mmaped buffer. Again this will fail
+	 * on kernels that do not back IOPMEM with struct page.
+	 */
+	if (cfg.odirect_file && test_odirect(&cfg)) {
+		failed = 1;
+		goto out;
+	}
+
+	/*
+	 * Test that we can issue an NVMe read IO against the mmapped virtual
 	 * address range. Note that without struct page backing this IO will
 	 * fail.
 	 */
@@ -340,13 +427,14 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-	 * Now open a file on a block device in O_DIRECT mode. Ideally
-	 * this should be on a NVMe SSD. Check to see if we can read from and
-	 * write too this file from our mmaped buffer. Again this will fail
-	 * on kernels that do not back IOPMEM with struct page.
+	 * Test that we can issue an NVMe write IO against the mmapped virtual
+	 * address range. Note that without struct page backing this IO will
+	 * fail.
 	 */
-	if (cfg.odirect_file && test_odirect(&cfg))
+	if (cfg.do_write_submit_io && test_write_submit_io(&cfg)) {
 		failed = 1;
+		goto out;
+	}
 
 out:
 	free(cfg.rand_buf);
