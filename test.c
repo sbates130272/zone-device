@@ -30,6 +30,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -37,9 +39,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
-
-// Kludge!
-#define LBA_SIZE 4096
 
 #include "../argconfig/argconfig.h"
 
@@ -201,10 +200,21 @@ static int test_buf(struct config *cfg)
 
 static int test_submit_io(struct config *cfg)
 {
+	struct stat stat;
+	int fd = open(cfg->nvme_device, O_RDONLY);
+	if (fd < 0)
+		return report(cfg, "test_submit_io (open)", errno);
+
+	if (fstat(fd, &stat))
+		return report(cfg, "test_submit_io (fstat)", errno);
+
+	if (fsync(fd))
+		return report(cfg, "test_read_submit_io (fsync)", errno);
+
 	struct nvme_user_io iocmd = {
 		.opcode = nvme_cmd_read,
 		.slba = cfg->lba,
-		.nblocks = cfg->mmap_len / LBA_SIZE,
+		.nblocks = cfg->mmap_len / stat.st_blksize,
 		.addr = (__u64) cfg->mmap_buf,
 		.metadata = 0,
 	};
@@ -213,32 +223,17 @@ static int test_submit_io(struct config *cfg)
 		fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
 			cfg->nvme_device);
 
-	int fd = open(cfg->nvme_device, O_RDONLY);
-	if (fd < 0)
-		return report(cfg, "test_submit_io (open)", errno);
 
 	int status = ioctl(fd, NVME_IOCTL_SUBMIT_IO, &iocmd);
 
 	if (cfg->verbose)
 		fprintf(stderr, "    ioctl result: %d -- %m\n", status);
 
-	//struct nvme_admin_cmd ptcmd ={
-	//    .opcode   = nvme_cmd_flush,
-	//};
-	//status = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &ptcmd);
-
-	//if (cfg->verbose)
-	//    fprintf(stderr, "    ioctl result: %d -- %m\n", status);
-
-	close(fd);
-	fd = open(cfg->nvme_device, O_RDONLY);
-	if (fd < 0)
-		return report(cfg, "test_submit_io (open)", errno);
-
 	char *buf = malloc(cfg->mmap_len);
 	if (buf == NULL)
 		return report(cfg, "test_submit_io (malloc)", errno);
 
+	lseek(fd, cfg->lba*stat.st_blksize, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len)
 		return report(cfg, "test_submit_io (read)", errno);
 
