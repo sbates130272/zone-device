@@ -288,7 +288,7 @@ int main(int argc, char *argv[])
 	 */
 	if (create_random_buf(&cfg)) {
 		failed = 1;
-		goto out;
+		goto out_nofree;
 	}
 
 	/*
@@ -337,6 +337,7 @@ int main(int argc, char *argv[])
 
 out:
 	free(cfg.rand_buf);
+out_nofree:
 	fprintf(stderr, "\n\n");
 	if (failed)
 		return report(&cfg, "Failed", -1);
