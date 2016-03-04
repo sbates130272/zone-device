@@ -38,6 +38,9 @@
 #include <time.h>
 #include <errno.h>
 
+// Kludge!
+#define LBA_SIZE 4096
+
 #include "../argconfig/argconfig.h"
 
 const char program_desc[] =
@@ -72,6 +75,9 @@ static const struct argconfig_commandline_options command_line_options[] = {
             "path to the file to mmap()"},
     {"odirect",    "STRING", CFG_STRING, &defaults.odirect_file, required_argument,
             "path to the O_DIRECT file to use"},
+    {"l",             "NUM", CFG_LONG_SUFFIX, &defaults.lba, required_argument, NULL},
+    {"lba",           "NUM", CFG_LONG_SUFFIX, &defaults.lba, required_argument,
+            "starting LBA to use"},
     {"m",             "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument, NULL},
     {"mmap_len",      "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument,
             "length of mmap to use"},
@@ -111,7 +117,7 @@ static int compare_buf(void *a, void *b, size_t len)
 
     for ( unsigned i=0; i<len; i++ )
         if (ac[i] != bc[i]){
-            fprintf(stderr, "%d\t%d\t%d\n", i, ac[i], bc[i]);
+            fprintf(stderr, "%d\t0x%02x\t0x%02x\n", i, ac[i], bc[i]);
             return i+1;
         }
 
@@ -175,9 +181,9 @@ static int test_buf(struct config *cfg)
 static int test_submit_io(struct config *cfg)
 {
     struct nvme_user_io iocmd = {
-        .opcode   = nvme_cmd_write,
+        .opcode   = nvme_cmd_read,
         .slba     = cfg->lba,
-        .nblocks  = 0,
+        .nblocks  = cfg->mmap_len/LBA_SIZE,
         .addr     = (__u64) cfg->mmap_buf,
         .metadata = 0,
     };
@@ -186,7 +192,7 @@ static int test_submit_io(struct config *cfg)
         fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
                 cfg->nvme_device);
 
-    int fd = open(cfg->nvme_device, O_RDWR);
+    int fd = open(cfg->nvme_device, O_RDONLY);
     if ( fd < 0 )
         return report(cfg, "test_submit_io (open)", errno);
 
@@ -194,6 +200,14 @@ static int test_submit_io(struct config *cfg)
 
     if (cfg->verbose)
         fprintf(stderr, "    ioctl result: %d -- %m\n", status);
+
+    //struct nvme_admin_cmd ptcmd ={
+    //    .opcode   = nvme_cmd_flush,
+    //};
+    //status = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &ptcmd);
+
+    //if (cfg->verbose)
+    //    fprintf(stderr, "    ioctl result: %d -- %m\n", status);
 
     close(fd);
     fd = open(cfg->nvme_device, O_RDONLY);
@@ -216,8 +230,6 @@ static int test_odirect(struct config *cfg)
 {
 
     char *buf = cfg->mmap_buf;
-    if ( buf==NULL )
-        return report(cfg, "test_odirect (valloc)", errno);
 
     if ( cfg->verbose )
         fprintf(stderr, "-- Testing O_DIRECT:\n");
@@ -229,10 +241,13 @@ static int test_odirect(struct config *cfg)
     if ( write(fd, cfg->rand_buf, cfg->mmap_len)==-1 )
         return report(cfg, "test_odirect (write)", errno);
 
+    if ( lseek(fd, SEEK_SET, 0)==-1 )
+        return report(cfg, "test_odirect (lseek)", errno);
+
     if ( read(fd, buf, cfg->mmap_len)==-1 )
         return report(cfg, "test_odirect (read)", errno);
     close(fd);
-    return compare_buf((void *)buf, cfg->rand_buf, cfg->mmap_len);
+    return compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
 ;
 }
 
