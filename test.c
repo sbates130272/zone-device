@@ -191,7 +191,12 @@ static int test_buf(struct config *cfg)
 	for (unsigned i = 0; i < cfg->mmap_len; i++)
 		a[i] = b[i];
 
-	return compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+	int ret = compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+
+	if (cfg->verbose)
+		fprintf(stderr, "    result: %d -- %m\n", ret);
+
+	return ret;
 }
 
 static int test_submit_io(struct config *cfg)
@@ -264,7 +269,13 @@ static int test_odirect(struct config *cfg)
 		return report(cfg, "test_odirect (read)", errno);
 
 	close(fd);
-	return compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+
+	int ret = compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+
+	if (cfg->verbose)
+		fprintf(stderr, "    result: %d -- %m\n", ret);
+
+	return ret;
 }
 
 int main(int argc, char *argv[])
