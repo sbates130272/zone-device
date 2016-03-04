@@ -198,15 +198,15 @@ static int test_buf(struct config *cfg)
 	return ret;
 }
 
-static int test_submit_io(struct config *cfg)
+static int test_read_submit_io(struct config *cfg)
 {
 	struct stat stat;
 	int fd = open(cfg->nvme_device, O_RDONLY);
 	if (fd < 0)
-		return report(cfg, "test_submit_io (open)", errno);
+		return report(cfg, "test_read_submit_io (open)", errno);
 
 	if (fstat(fd, &stat))
-		return report(cfg, "test_submit_io (fstat)", errno);
+		return report(cfg, "test_read_submit_io (fstat)", errno);
 
 	if (fsync(fd))
 		return report(cfg, "test_read_submit_io (fsync)", errno);
@@ -220,7 +220,7 @@ static int test_submit_io(struct config *cfg)
 	};
 
 	if (cfg->verbose)
-		fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
+		fprintf(stderr, "-- Testing NVME read submit_io ioctl on %s:\n",
 			cfg->nvme_device);
 
 
@@ -231,11 +231,11 @@ static int test_submit_io(struct config *cfg)
 
 	char *buf = malloc(cfg->mmap_len);
 	if (buf == NULL)
-		return report(cfg, "test_submit_io (malloc)", errno);
+		return report(cfg, "test_read_submit_io (malloc)", errno);
 
 	lseek(fd, cfg->lba*stat.st_blksize, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len)
-		return report(cfg, "test_submit_io (read)", errno);
+		return report(cfg, "test_read_submit_io (read)", errno);
 
 	close(fd);
 
@@ -333,7 +333,7 @@ int main(int argc, char *argv[])
 	 * address range. Note that without struct page backing this IO will
 	 * fail.
 	 */
-	if (test_submit_io(&cfg)) {
+	if (test_read_submit_io(&cfg)) {
 		failed = 1;
 		goto out;
 	}
