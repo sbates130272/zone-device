@@ -221,7 +221,7 @@ static int test_read_submit_io(struct config *cfg)
 	struct nvme_user_io iocmd = {
 		.opcode = nvme_cmd_read,
 		.slba = cfg->lba,
-		.nblocks = cfg->mmap_len / stat.st_blksize,
+		.nblocks = cfg->mmap_len / stat.st_blksize - 1,
 		.addr = (__u64) cfg->mmap_buf,
 		.metadata = 0,
 	};
@@ -279,7 +279,7 @@ static int test_write_submit_io(struct config *cfg)
 	struct nvme_user_io iocmd = {
 		.opcode = nvme_cmd_write,
 		.slba = cfg->lba,
-		.nblocks = cfg->mmap_len / stat.st_blksize,
+		.nblocks = cfg->mmap_len / stat.st_blksize - 1,
 		.addr = (__u64) cfg->mmap_buf,
 		.metadata = 0,
 	};
