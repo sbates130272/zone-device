@@ -94,7 +94,7 @@ static int report(struct config *cfg, const char *func, int val) {
 
 static int create_random_buf(struct config *cfg)
 {
-    char *buf = malloc(cfg->mmap_len);
+    char *buf = valloc(cfg->mmap_len);
     if ( buf == NULL )
         return errno;
     for ( unsigned i=0; i<cfg->mmap_len; i++ )
@@ -110,8 +110,26 @@ static int compare_buf(void *a, void *b, size_t len)
     char *ac = (char *)a, *bc = (char *)b;
 
     for ( unsigned i=0; i<len; i++ )
-        if (ac[i] != bc[i])
+        if (ac[i] != bc[i]){
+            fprintf(stderr, "%d\t%d\t%d\n", i, ac[i], bc[i]);
             return i+1;
+        }
+
+    return 0;
+}
+
+static int create_mmap(struct config *cfg)
+{
+    void * buf;
+    int tfd = open(cfg->mmap_file, O_RDWR);
+    if (tfd < 0)
+        return report(cfg, "create_mmap (open)", errno);
+
+    buf = mmap(NULL, cfg->mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, tfd, 0);
+    if (buf == MAP_FAILED)
+        return report(cfg, "create_mmap (mmap)", errno);
+    close(tfd);
+    cfg->mmap_buf = buf;
 
     return 0;
 }
@@ -123,7 +141,7 @@ static int test_mem_map(struct config *cfg)
 
     int fd = open("/dev/mem_map", O_RDWR);
     if ( fd < 0 )
-        return report(cfg, "test_mem_map", errno);
+        return report(cfg, "test_mem_map (open)", errno);
 
     int pfn      = ioctl(fd, 0, cfg->mmap_buf);
     int isdevice = ioctl(fd, 1, cfg->mmap_buf);
@@ -135,90 +153,9 @@ static int test_mem_map(struct config *cfg)
 
     if ( (cfg->zone_device && !isdevice) ||
          (!cfg->zone_device && isdevice) ) {
-            if (cfg->verbose)
-                fprintf(stderr, "    Memory zone type mis-match!\n");
-        return 1;
+        return report(cfg, "test_mem_map (mem type)", -1);
     }
     return 0;
-}
-
-static int test_submit_io(struct config *cfg)
-{
-    char meta[8192];
-
-    struct nvme_user_io iocmd = {
-        .opcode = nvme_cmd_read,
-        .slba = cfg->lba,
-        .nblocks = 0,
-        .addr = (__u64) cfg->mmap_buf,
-        .metadata = 0,//(__u64) meta,
-    };
-
-    if ( cfg->verbose )
-        fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
-                cfg->nvme_device);
-
-    int fd = open(cfg->nvme_device, O_RDONLY);
-    if (fd < 0)
-        return report(cfg, "test_submit_io", errno);
-
-    int status = ioctl(fd, NVME_IOCTL_SUBMIT_IO, &iocmd);
-
-    if (cfg->verbose)
-        fprintf(stderr, "    ioctl result: %d -- %m\n", status);
-
-    close(fd);
-
-    fwrite(cfg->mmap_buf, 128, 1, stdout);
-
-    return 0;
-
-}
-
-static int test_odirect(struct config *cfg)
-{
-
-    unsigned char *buf = cfg->mmap_buf;
-
-    if (cfg->verbose)
-        fprintf(stderr, "-- Testing O_DIRECT:\n");
-
-    int fd = open(cfg->odirect_file, O_RDWR | O_DIRECT);
-    if (fd < 0)
-        return report(cfg, "test_odirect", errno);
-
-    if (cfg->verbose)
-        fprintf(stderr, "    read result: %d, %m\n", read(fd, &buf[4096], 4096));
-
-    fwrite(&buf[4096], 128, 1, stdout);
-
-    memset(&buf[8192], 0xaa, 4096);
-    if (cfg->verbose)
-        fprintf(stderr, "    write result: %d, %m\n", write(fd, &buf[8192], 4096));
-
-    close(fd);
-    return 0;
-}
-
-static int create_mmap(struct config *cfg)
-{
-    void * buf;
-    int tfd = open(cfg->mmap_file, O_RDWR);
-    if (tfd < 0) {
-        fprintf(stderr, "ERROR: Could not open test file: %m\n");
-        return errno;
-    }
-
-    buf = mmap(NULL, cfg->mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, tfd, 0);
-    if (buf == MAP_FAILED)
-        return report(cfg, "create_mmap", errno);
-
-    close(tfd);
-
-    cfg->mmap_buf = buf;
-
-    return 0;
-
 }
 
 static int test_buf(struct config *cfg)
@@ -233,6 +170,70 @@ static int test_buf(struct config *cfg)
         a[i] = b[i];
 
     return compare_buf(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
+}
+
+static int test_submit_io(struct config *cfg)
+{
+    struct nvme_user_io iocmd = {
+        .opcode   = nvme_cmd_write,
+        .slba     = cfg->lba,
+        .nblocks  = 0,
+        .addr     = (__u64) cfg->mmap_buf,
+        .metadata = 0,
+    };
+
+    if ( cfg->verbose )
+        fprintf(stderr, "-- Testing NVME submit_io ioctl on %s:\n",
+                cfg->nvme_device);
+
+    int fd = open(cfg->nvme_device, O_RDWR);
+    if ( fd < 0 )
+        return report(cfg, "test_submit_io (open)", errno);
+
+    int status = ioctl(fd, NVME_IOCTL_SUBMIT_IO, &iocmd);
+
+    if (cfg->verbose)
+        fprintf(stderr, "    ioctl result: %d -- %m\n", status);
+
+    close(fd);
+    fd = open(cfg->nvme_device, O_RDONLY);
+    if ( fd < 0 )
+        return report(cfg, "test_submit_io (open)", errno);
+
+    char *buf = malloc(cfg->mmap_len);
+    if ( buf==NULL )
+        return report(cfg, "test_submit_io (malloc)", errno);
+
+    if ( read(fd, buf, cfg->mmap_len)!=cfg->mmap_len)
+        return report(cfg, "test_submit_io (read)", errno);
+
+    close(fd);
+
+    return compare_buf((void *)buf, cfg->mmap_buf, cfg->mmap_len);
+}
+
+static int test_odirect(struct config *cfg)
+{
+
+    char *buf = cfg->mmap_buf;
+    if ( buf==NULL )
+        return report(cfg, "test_odirect (valloc)", errno);
+
+    if ( cfg->verbose )
+        fprintf(stderr, "-- Testing O_DIRECT:\n");
+
+    int fd = open(cfg->odirect_file, O_RDWR | O_DIRECT);
+    if ( fd < 0 )
+        return report(cfg, "test_odirect (open)", errno);
+
+    if ( write(fd, cfg->rand_buf, cfg->mmap_len)==-1 )
+        return report(cfg, "test_odirect (write)", errno);
+
+    if ( read(fd, buf, cfg->mmap_len)==-1 )
+        return report(cfg, "test_odirect (read)", errno);
+    close(fd);
+    return compare_buf((void *)buf, cfg->rand_buf, cfg->mmap_len);
+;
 }
 
 int main(int argc, char *argv[])
@@ -276,7 +277,7 @@ int main(int argc, char *argv[])
 
     /*
      * Test that we can read and write data via the virtual addresses
-     * provided by mmap. This is a pretty trivial test.
+     * provided by mmap.
      */
     if ( test_buf(&cfg) ) {
         failed = 1;

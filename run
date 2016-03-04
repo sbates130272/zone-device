@@ -6,5 +6,7 @@ MNT_IOPMEM=/mnt/iopmem
 MNT_NVME=/mnt/nvme
 
 ./test -v --mmap ${MNT_LOCAL}/tst --odirect $MNT_NVME/tst
+sleep 1
 ./test -vz --mmap ${MNT_PMEM}/tst --odirect $MNT_NVME/tst
+sleep 1
 ./test -vz --mmap ${MNT_IOPMEM}/tst --odirect $MNT_NVME/tst
