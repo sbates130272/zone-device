@@ -332,7 +332,7 @@ int main(int argc, char *argv[])
 	 * write too this file from our mmaped buffer. Again this will fail
 	 * on kernels that do not back IOPMEM with struct page.
 	 */
-	if (test_odirect(&cfg))
+	if (cfg.odirect_file && test_odirect(&cfg))
 		failed = 1;
 
 out:
