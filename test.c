@@ -100,7 +100,7 @@ static const struct argconfig_commandline_options command_line_options[] = {
 
 static int report(struct config *cfg, const char *func, int val)
 {
-	if (cfg->verbose)
+	if (cfg->verbose || errno)
 		fprintf(stderr, "%s: %d = %s.\n", func, errno, strerror(errno));
 
 	return val;
