@@ -108,9 +108,15 @@ static int report(struct config *cfg, const char *func, int val)
 
 static int create_random_buf(struct config *cfg)
 {
-	char *buf = valloc(cfg->mmap_len);
-	if (buf == NULL)
-		return errno;
+	void *p;
+	char *buf;
+
+	int ret = posix_memalign(&p, sysconf(_SC_PAGESIZE), cfg->mmap_len);
+	if (ret || p == NULL)
+		return ret;
+
+	buf = p;
+
 	for (unsigned i = 0; i < cfg->mmap_len; i++)
 		buf[i] = (char)rand();
 
