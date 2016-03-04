@@ -276,6 +276,12 @@ int main(int argc, char *argv[])
 	if (cfg.verbose)
 		fprintf(stderr, "INFO: seed = %d.\n", cfg.seed);
 
+	if (!cfg.mmap_file) {
+		fprintf(stderr, "ERROR: No mmap file specified, "
+			"use the -mmap option\n");
+		return 1;
+	}
+
 	/*
 	 * Generate a buffer full of random data in this processes VMA. We
 	 * will use this is a few places to test data movement.
