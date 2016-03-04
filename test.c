@@ -130,8 +130,9 @@ static int compare_buf(void *a, void *b, size_t len)
 
 	for (unsigned i = 0; i < len; i++) {
 		if (ac[i] != bc[i]) {
-			fprintf(stderr, "%d\t0x%02x\t0x%02x\n", i, ac[i],
-				bc[i]);
+			for (int j = 0; j < 16; j++)
+				fprintf(stderr, "%d\t0x%02x\t0x%02x\n", i+j, ac[i+j],
+					bc[i+j]);
 			return i + 1;
 		}
 	}
