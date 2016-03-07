@@ -25,6 +25,8 @@
 //
 ////////////////////////////////////////////////////////////////////////
 
+#include <argconfig/argconfig.h>
+
 #include <linux/nvme.h>
 
 #include <fcntl.h>
@@ -39,8 +41,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
-
-#include "../argconfig/argconfig.h"
 
 const char program_desc[] = "Simple program for testing ZONE_DEVICE devices.";
 

@@ -1,24 +1,18 @@
-EXE=test
-
 ARGCONFIG=libargconfig
-ARGCONFIG_SRC=$(ARGCONFIG)/src
-ARGCONFIG_INC=$(ARGCONFIG)/inc/argconfig/
+ARGCONFIG_INC=$(ARGCONFIG)/inc
+LIBARGCONFIG=$(ARGCONFIG)/libargconfig.a
 
-CFLAGS += -g -std=c99 -D_GNU_SOURCE -I$(ARGCONFIG_INC)
+CPPFLAGS += -I$(ARGCONFIG_INC)
+CFLAGS += -g -std=c99 -D_GNU_SOURCE
 
-default: $(EXE) perf
+default: test perf
 
-$(EXE):argconfig.o suffix.o report.o
-perf: argconfig.o suffix.o report.o
+test: $(LIBARGCONFIG)
+perf: $(LIBARGCONFIG)
 
-argconfig.o: $(ARGCONFIG_SRC)/argconfig.c $(ARGCONFIG_INC)/argconfig.h $(ARGCONFIG_INC)/suffix.h
-	$(CC) -c $(CFLAGS) $(ARGCONFIG_SRC)/argconfig.c
-
-suffix.o: $(ARGCONFIG_SRC)/suffix.c $(ARGCONFIG_INC)/suffix.h
-	$(CC) -c $(CFLAGS) $(ARGCONFIG_SRC)/suffix.c
-
-report.o: $(ARGCONFIG_SRC)/report.c $(ARGCONFIG_INC)/report.h $(ARGCONFIG_INC)/suffix.h
-	$(CC) -c $(CFLAGS) $(ARGCONFIG_SRC)/report.c
+$(LIBARGCONFIG):
+	make -C $(ARGCONFIG) libargconfig.a
 
 clean:
-	rm -rf $(EXE) *.o *~
+	rm -rf *.o test perf
+	make -C $(ARGCONFIG) clean
