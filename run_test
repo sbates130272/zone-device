@@ -183,3 +183,4 @@ fi
 ./test -v  --mmap ${LOCAL_MNT}/tst  --odirect ${NVME_MNT}/tst | hd
 ./test -vz --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
 ./test -vz --mmap ${PMEM_MNT}/tst   --odirect ${NVME_MNT}/tst | hd
+./test -vz --mmap /dev/iopmemc0     --odirect ${NVME_MNT}/tst | hd
