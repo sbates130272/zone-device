@@ -329,8 +329,12 @@ static int test_odirect(struct config *cfg)
 	if (fd < 0)
 		return report(cfg, "test_odirect (open)", errno);
 
-	if (write(fd, cfg->rand_buf, cfg->mmap_len) == -1)
+	memcpy(buf, cfg->rand_buf, cfg->mmap_len);
+
+	if (write(fd, buf, cfg->mmap_len) == -1)
 		return report(cfg, "test_odirect (write)", errno);
+
+	memset(buf, 0xAA, cfg->mmap_len);
 
 	if (lseek(fd, SEEK_SET, 0) == -1)
 		return report(cfg, "test_odirect (lseek)", errno);
