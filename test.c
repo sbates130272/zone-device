@@ -132,7 +132,7 @@ static int create_random_buf(struct config *cfg)
 
 static int compare_buf(void *a, void *b, size_t len)
 {
-	char *ac = (char *)a, *bc = (char *)b;
+	unsigned char *ac = (unsigned char *)a, *bc = (unsigned char *)b;
 
 	for (unsigned i = 0; i < len; i++) {
 		if (ac[i] != bc[i]) {
