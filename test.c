@@ -294,6 +294,13 @@ static int test_write_submit_io(struct config *cfg)
 	if (status)
 		return status;
 
+	close(fd);
+
+	fd = open(cfg->nvme_device, O_RDWR);
+	if (fd < 0)
+		return report(cfg, "test_write_submit_io (open2)", errno);
+
+
 	lseek(fd, cfg->lba*cfg->lba_size, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len) {
 		ret = report(cfg, "test_write_submit_io (read)", errno);
