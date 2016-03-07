@@ -1,0 +1,13 @@
+#!/bin/sh
+
+./perf -m 8k "$@"
+./perf -m 16k "$@"
+./perf -m 64k "$@"
+./perf -m 128k "$@"
+./perf -m 256k "$@"
+./perf -m 512k "$@"
+./perf -m 1M "$@"
+./perf -m 2M "$@"
+./perf -m 4M "$@"
+./perf -m 8M "$@"
+./perf -m 16M "$@"
