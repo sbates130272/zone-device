@@ -1,3 +1,6 @@
 [submodule "libargconfig"]
 	path = libargconfig
 	url = https://github.com/sbates130272/libargconfig
+[submodule "modules/mem_map"]
+	path = modules/mem_map
+	url = https://github.com/sbates130272/mem_map.git
