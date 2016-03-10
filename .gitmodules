@@ -4,3 +4,6 @@
 [submodule "modules/mem_map"]
 	path = modules/mem_map
 	url = https://github.com/sbates130272/mem_map.git
+[submodule "modules/iopmem"]
+	path = modules/iopmem
+	url = https://github.com/sbates130272/iopmem.git
