@@ -16,7 +16,7 @@ be included in the ZONE_DEVICE framework [2]
   following command:
 
   ```
-  ./runqemu -pv <path to zone-device repo>/kernels/bzImage-zone-device
+  ./runqemu -pv <path to zone-device repo>/kernels/bzImage-zone-device-qemu
   ```
   2. Inside the QEMU machine cd to the correct folder. Note the QEMU
   call maps the /home folder on the host machine to the /home folder
@@ -68,6 +68,11 @@ attached behind a PCIe switch. These PCIe devices included:
 
 A similar approach was taken to testing SW as per the QEMU environment
 mentioned above except a non-monolithic kernel was used.
+
+# Kernels
+
+A kernels subfolder contains the bzImage for the QEMU kernel as well
+as example configs for both QEMU and real hardware.
 
 # References
 
