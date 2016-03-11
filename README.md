@@ -78,7 +78,7 @@ as example configs for both QEMU and real hardware.
 
 [1] https://lists.01.org/pipermail/linux-nvdimm/2015-August/001810.html
 
-[2] https://github.com/sbates130272/linux-donard/tree/nvme-cmb-rfc-v0
+[2] https://github.com/sbates130272/linux-donard/tree/iopmem-rfc
 
 [3] https://github.com/sbates130272/qemu-minimal.git
 

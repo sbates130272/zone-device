@@ -101,14 +101,12 @@ if [ "$BUILD" = 1 ]; then
     if [ ! -z $KERNEL_DIR ]; then
        echo "Building modules using ${KERNEL_DIR} as build folder."
        KERNEL_DIR="KDIR=$KERNEL_DIR"
-       echo $KERNEL_DIR
     fi
     make clean && make && \
         make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map clean && \
-        make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map && \
         make ${KERNEL_DIR} -C ${MODULE_DIR}/iopmem clean && \
+        make ${KERNEL_DIR} -C ${MODULE_DIR}/mem_map && \
         make ${KERNEL_DIR} -C ${MODULE_DIR}/iopmem
-
     exit 1
 fi
 
