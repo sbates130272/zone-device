@@ -2,8 +2,9 @@ ARGCONFIG=libargconfig
 ARGCONFIG_INC=$(ARGCONFIG)/inc
 LIBARGCONFIG=$(ARGCONFIG)/libargconfig.a
 
-CPPFLAGS += -I$(ARGCONFIG_INC)
-CFLAGS += -g -std=c99 -D_GNU_SOURCE
+CPPFLAGS += -I$(ARGCONFIG_INC) -D_GNU_SOURCE
+CFLAGS += -g -std=c99
+LDLIBS += -lpthread
 
 default: test perf
 

@@ -35,6 +35,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -52,11 +53,13 @@ struct config {
 	unsigned long iterations;
 	void *rand_buf;
 	void *mmap_buf;
+	int threads;
 };
 
 static const struct config defaults = {
 	.mmap_len = 8192,
 	.iterations = 10,
+	.threads = 1,
 };
 
 static const struct argconfig_commandline_options command_line_options[] = {
@@ -73,6 +76,9 @@ static const struct argconfig_commandline_options command_line_options[] = {
 			NULL},
 	{"mmap_len", "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument,
 			"length of mmap to use"},
+
+	{"t", "NUM", CFG_POSITIVE, &defaults.threads, required_argument,
+			"number of threads to use"},
 
 	{0}
 };
@@ -110,7 +116,8 @@ static int create_mmap(struct config *cfg)
 	if (tfd < 0)
 		return report(cfg, "create_mmap (open)", errno);
 
-	buf = mmap(NULL, cfg->mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED,
+	buf = mmap(NULL, cfg->mmap_len*cfg->threads,
+		   PROT_READ | PROT_WRITE, MAP_SHARED,
 		   tfd, 0);
 	if (buf == MAP_FAILED)
 		return report(cfg, "create_mmap (mmap)", errno);
@@ -120,21 +127,17 @@ static int create_mmap(struct config *cfg)
 	return 0;
 }
 
-static int perf_test(struct config *cfg, int do_write)
+static int perf_test(char *buf, unsigned seek, struct config *cfg, int do_write,
+		     size_t *count_result)
 {
-	char *buf = cfg->mmap_buf;
-	struct timeval start_time, end_time;
-
-	fprintf(stderr, "Testing %s performance\n",
-		do_write ? "write" : "read");
-
 	int fd = open(cfg->odirect_file, O_RDWR | O_DIRECT);
 	if (fd < 0)
 		return report(cfg, "perf_test (open)", errno);
 
+	lseek(fd, seek, SEEK_SET);
+
 	memcpy(buf, cfg->rand_buf, cfg->mmap_len);
 
-	gettimeofday(&start_time, NULL);
 	size_t count = 0;
 
 	for (int i = 0; i < cfg->iterations; i++) {
@@ -150,15 +153,60 @@ static int perf_test(struct config *cfg, int do_write)
 
 		count += r;
 	}
-	gettimeofday(&end_time, NULL);
 
-
-	fprintf(stderr, "  ");
-	report_transfer_bin_rate(stderr, &start_time, &end_time, count);
-	fprintf(stderr, "  \n");
-
+	*count_result = count;
 
 	return 0;
+}
+
+struct thread_args {
+	pthread_t pthread;
+	struct config *cfg;
+	int do_write;
+	size_t bytes_txfrd;
+	void *mmap_buf;
+	unsigned seek;
+};
+
+static void *thread(void *args)
+{
+	struct thread_args *targs = args;
+	perf_test(targs->mmap_buf, targs->seek, targs->cfg,
+		  targs->do_write, &targs->bytes_txfrd);
+}
+
+static int start_threaded_test(struct config *cfg, int do_write)
+{
+	struct timeval start_time, end_time;
+	struct thread_args ts[cfg->threads];
+	size_t total_bytes = 0;
+
+	fprintf(stderr, "Testing %s performance\n",
+		do_write ? "write" : "read");
+
+
+	for (int i = 0; i < cfg->threads; i++) {
+		ts[i].cfg = cfg;
+		ts[i].do_write = do_write;
+		ts[i].mmap_buf = ((unsigned char *)cfg->mmap_buf) + i*cfg->mmap_len;
+		ts[i].seek = i*cfg->mmap_len;
+	}
+
+	gettimeofday(&start_time, NULL);
+	for (int i = 0; i < cfg->threads; i++)
+		pthread_create(&ts[i].pthread, NULL, thread, &ts[i]);
+
+
+	for (int i = 0; i < cfg->threads; i++) {
+		pthread_join(ts[i].pthread, NULL);
+		total_bytes += ts[i].bytes_txfrd;
+	}
+
+	gettimeofday(&end_time, NULL);
+
+	fprintf(stderr, "  ");
+	report_transfer_bin_rate(stderr, &start_time, &end_time, total_bytes);
+	fprintf(stderr, "  \n");
 }
 
 int main(int argc, char *argv[])
@@ -185,6 +233,7 @@ int main(int argc, char *argv[])
 	}
 
 	fprintf(stderr, "IO Size: %d\n", cfg.mmap_len);
+	fprintf(stderr, "Threads: %d\n", cfg.threads);
 
 
 	/*
@@ -208,8 +257,8 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	failed = perf_test(&cfg, 0);
-	failed |= perf_test(&cfg, 1);
+	start_threaded_test(&cfg, 0);
+	start_threaded_test(&cfg, 1);
 
 
 	fprintf(stderr, "\n");
