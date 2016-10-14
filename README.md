@@ -21,7 +21,9 @@ can do the following steps.
   ./build
   ```
   2. If running on QEMU download the qemu-minimal repo [3] and run the
-  following command:
+  following command. Note you will need to have ZONE_DEVICE and FS_DAX
+  config options set in your kernel for IOPMEM and you will need to
+  include additonal config options for PMEM too:
 
   ```
   ./runqemu -pv <path to zone-device repo>/kernels/bzImage-zone-device-qemu
@@ -46,27 +48,24 @@ can do the following steps.
 Note there are a range of options and arguments in run_test and you
 should review those for your system. The current settings should work
 in the QEMU environment but will almost certainly fail on real
-hardware. BUS_ID, VENDOR_ID, DEVICE_ID and BAR_ID will almost
-certianly have to be changed on a real system to match your target
-IOPMEM device.
+hardware. BUS_ID will almost certianly have to be changed on a real
+system to match your target IOPMEM device.
 
 # Running in QEMU Environment
 
 We performed testing on a QEMU machine using Keith Busch's fork of
 QEMU which implements an NVMe device [4]. The testing was done on a
-monolithic kernel based on 4.5-rc4 and our patch and the bzImage for
-this kernel can be found in the kernel subfolder.
+monolithic kernel based on [2] and the bzImage for this kernel can be
+found in the kernel subfolder.
 
 The root system was a minimal debian system based on the one that can
 be found here [3]. Both a PMEM and IOPMEM memory device were
-created. The PMEM device was created using the -p switch to the
+created. The devices were created using the -p switch to the
 ./runqemu script. You might need to tweak the memory settings to get
 this to work on your system.
 
-The IOPMEM device was created using a NVMe instance with a BAR
-exposed, unbinding the NVMe driver from this device and then binding
-the IOPMEM driver to the device. Note the IOPMEM driver is heavily
-based of a slighly older version of the current PMEM driver [5].
+The IOPMEM device was created using a patch to QEMU [NEED REF]. Note
+the IOPMEM driver is heavily based off the PMEM driver.
 
 # Running on Hardware
 
@@ -94,10 +93,8 @@ as example configs for both QEMU and real hardware.
 
 [1] https://lists.01.org/pipermail/linux-nvdimm/2015-August/001810.html
 
-[2] https://github.com/sbates130272/linux-donard/tree/iopmem-rfc
+[2] https://github.com/sbates130272/linux-donard/tree/iopmem-v0
 
 [3] https://github.com/sbates130272/qemu-minimal.git
 
 [4] git://git.infradead.org/users/kbusch/qemu-nvme.git
-
-[5] https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/drivers/nvdimm/pmem.c?id=refs/

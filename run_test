@@ -21,10 +21,9 @@ BUILD=0
 UNLOAD=0
 FORCE=0
 
-BUS_ID=0000:00:05.0
-VENDOR_ID=8086
-DEVICE_ID=5845
-BAR_ID=2
+BUS_ID=0000:00:06.0
+#VENDOR_ID=8086
+#DEVICE_ID=5845
 
 LOCAL_MNT=/root
 
@@ -128,12 +127,7 @@ else
 fi
 
 if ! check_module iopmem ; then
-    insmod ${MODULE_DIR}/iopmem/iopmem.ko bar_id=$BAR_ID
-    set +e
-    echo "$BUS_ID" > /sys/bus/pci/drivers/nvme/unbind
-    echo "$VENDOR_ID $DEVICE_ID" > /sys/bus/pci/drivers/iopmem/new_id
-    echo "$BUS_ID" > /sys/bus/pci/drivers/iopmem/bind
-    set -e
+    insmod ${MODULE_DIR}/iopmem/iopmem.ko
 else
     echo "run_test: Warning iopmem was already loaded!"
 fi
@@ -181,4 +175,3 @@ fi
 ./test -v  --mmap ${LOCAL_MNT}/tst  --odirect ${NVME_MNT}/tst | hd
 ./test -vz --mmap ${IOPMEM_MNT}/tst --odirect ${NVME_MNT}/tst | hd
 ./test -vz --mmap ${PMEM_MNT}/tst   --odirect ${NVME_MNT}/tst | hd
-./test -vz --mmap /dev/iopmemc0     --odirect ${NVME_MNT}/tst | hd
