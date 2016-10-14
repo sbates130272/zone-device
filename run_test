@@ -126,11 +126,11 @@ else
     echo "run_test: Warning mem_map was already loaded!"
 fi
 
-if ! check_module iopmem ; then
-    insmod ${MODULE_DIR}/iopmem/iopmem.ko
-else
-    echo "run_test: Warning iopmem was already loaded!"
-fi
+#if ! check_module iopmem ; then
+#    insmod ${MODULE_DIR}/iopmem/iopmem.ko
+#else
+#    echo "run_test: Warning iopmem was already loaded!"
+#fi
 
   # Check to see if the IOPMEM device is already mounted. If it is
   # we error unless FORCE is set. We use mountpoint to do this so
