@@ -2,3 +2,9 @@
 *.o
 test
 perf
+*.cmd
+.tmp_versions/
+Module.symvers
+*.ko
+*.mod.c
+modules.order
