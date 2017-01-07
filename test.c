@@ -28,6 +28,7 @@
 #include <argconfig/argconfig.h>
 
 #include <linux/nvme.h>
+#include <linux/fs.h>
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -49,7 +50,6 @@ struct config {
 	char *odirect_file;
 	char *nvme_device;
 	unsigned long lba;
-	unsigned long lba_size;
 	int mmap_len;
 	int seed;
 	void *rand_buf;
@@ -62,7 +62,6 @@ struct config {
 static const struct config defaults = {
 	.nvme_device = "/dev/nvme0n1",
 	.lba = 100,
-	.lba_size = 4096,
 	.mmap_len = 8192,
 	.seed = -1,
 	.zone_device = 0,
@@ -83,9 +82,6 @@ static const struct argconfig_commandline_options command_line_options[] = {
 			NULL},
 	{"lba", "NUM", CFG_LONG_SUFFIX, &defaults.lba, required_argument,
 			"starting LBA to use"},
-
-	{"lba-size", "NUM", CFG_LONG_SUFFIX, &defaults.lba_size, required_argument,
-			"nvme lba size"},
 
 	{"m", "NUM", CFG_LONG_SUFFIX, &defaults.mmap_len, required_argument,
 			NULL},
@@ -168,29 +164,6 @@ static int create_mmap(struct config *cfg)
 	return 0;
 }
 
-static int test_mem_map(struct config *cfg)
-{
-	if (cfg->verbose)
-		fprintf(stderr, "-- Testing mem_map GUP:\n");
-
-	int fd = open("/dev/mem_map", O_RDWR);
-	if (fd < 0)
-		return report(cfg, "test_mem_map (open)", errno);
-
-	int pfn = ioctl(fd, 0, cfg->mmap_buf);
-	int isdevice = ioctl(fd, 1, cfg->mmap_buf);
-	if (cfg->verbose)
-		fprintf(stderr, "    mem_map result: %lx, (%s) %m\n", pfn,
-			isdevice ? "device" : "not device");
-
-	close(fd);
-
-	if ((cfg->zone_device && !isdevice) || (!cfg->zone_device && isdevice))
-		return report(cfg, "test_mem_map (mem type)", -1);
-
-	return 0;
-}
-
 static int test_buf(struct config *cfg)
 {
 	unsigned long *a = (unsigned long *)cfg->mmap_buf,
@@ -210,8 +183,17 @@ static int test_buf(struct config *cfg)
 	return ret;
 }
 
+static int get_phys_sector_size(int fd)
+{
+	int ret;
+	ioctl(fd, BLKPBSZGET, &ret);
+
+	return ret;
+}
+
 static int test_read_submit_io(struct config *cfg)
 {
+	int phys_sector_size;
 	int fd = open(cfg->nvme_device, O_RDONLY);
 	if (fd < 0)
 		return report(cfg, "test_read_submit_io (open)", errno);
@@ -219,10 +201,12 @@ static int test_read_submit_io(struct config *cfg)
 	if (fsync(fd))
 		return report(cfg, "test_read_submit_io (fsync)", errno);
 
+	phys_sector_size = get_phys_sector_size(fd);
+
 	struct nvme_user_io iocmd = {
 		.opcode = nvme_cmd_read,
 		.slba = cfg->lba,
-		.nblocks = cfg->mmap_len / cfg->lba_size - 1,
+		.nblocks = cfg->mmap_len / phys_sector_size - 1,
 		.addr = (__u64) cfg->mmap_buf,
 		.metadata = 0,
 	};
@@ -241,7 +225,7 @@ static int test_read_submit_io(struct config *cfg)
 	if (buf == NULL)
 		return report(cfg, "test_read_submit_io (malloc)", errno);
 
-	lseek(fd, cfg->lba*cfg->lba_size, SEEK_SET);
+	lseek(fd, cfg->lba*phys_sector_size, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len)
 		return report(cfg, "test_read_submit_io (read)", errno);
 
@@ -253,6 +237,7 @@ static int test_read_submit_io(struct config *cfg)
 static int test_write_submit_io(struct config *cfg)
 {
 	int ret;
+	int phys_sector_size;
 	char oldbuf[cfg->mmap_len];
 	char buf[cfg->mmap_len];
 
@@ -260,14 +245,16 @@ static int test_write_submit_io(struct config *cfg)
 	if (fd < 0)
 		return report(cfg, "test_write_submit_io (open)", errno);
 
-	lseek(fd, cfg->lba*cfg->lba_size, SEEK_SET);
+	phys_sector_size = get_phys_sector_size(fd);
+
+	lseek(fd, cfg->lba * phys_sector_size, SEEK_SET);
 	if (read(fd, oldbuf, cfg->mmap_len) != cfg->mmap_len)
 		return report(cfg, "test_write_submit_io (read)", errno);
 
 	if (fsync(fd))
 		return report(cfg, "test_write_submit_io (fsync)", errno);
 
-	if (posix_fadvise(fd, cfg->lba * cfg->lba_size, cfg->mmap_len,
+	if (posix_fadvise(fd, cfg->lba * phys_sector_size, cfg->mmap_len,
 			  POSIX_FADV_DONTNEED))
 		return report(cfg, "test_write_submit_io (posix_fadvise)", errno);
 
@@ -276,7 +263,7 @@ static int test_write_submit_io(struct config *cfg)
 	struct nvme_user_io iocmd = {
 		.opcode = nvme_cmd_write,
 		.slba = cfg->lba,
-		.nblocks = cfg->mmap_len / cfg->lba_size - 1,
+		.nblocks = cfg->mmap_len / phys_sector_size - 1,
 		.addr = (__u64) cfg->mmap_buf,
 		.metadata = 0,
 	};
@@ -301,7 +288,7 @@ static int test_write_submit_io(struct config *cfg)
 		return report(cfg, "test_write_submit_io (open2)", errno);
 
 
-	lseek(fd, cfg->lba*cfg->lba_size, SEEK_SET);
+	lseek(fd, cfg->lba * phys_sector_size, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len) {
 		ret = report(cfg, "test_write_submit_io (read)", errno);
 		goto write_back;
@@ -310,7 +297,7 @@ static int test_write_submit_io(struct config *cfg)
 	ret = compare_buf(buf, cfg->mmap_buf, cfg->mmap_len);
 
 write_back:
-	lseek(fd, cfg->lba*cfg->lba_size, SEEK_SET);
+	lseek(fd, cfg->lba * phys_sector_size, SEEK_SET);
 	write(fd, oldbuf, cfg->mmap_len);
 	fsync(fd);
 	close(fd);
@@ -396,10 +383,6 @@ int main(int argc, char *argv[])
 	 * this program.
 	 */
 	if (create_mmap(&cfg)) {
-		failed = 1;
-		goto out;
-	}
-	if (test_mem_map(&cfg)) {
 		failed = 1;
 		goto out;
 	}
