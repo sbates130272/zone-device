@@ -191,6 +191,22 @@ static int get_phys_sector_size(int fd)
 	return ret;
 }
 
+static int clear_caches(int fd, size_t offset, size_t len)
+{
+	// Just to be sure, we are a bit heavy handed here...
+
+	if (fsync(fd))
+		return errno;
+
+	if (posix_fadvise(fd, offset, len, POSIX_FADV_DONTNEED))
+		return errno;
+
+	if (fsync(fd))
+		return errno;
+
+	return 0;
+}
+
 static int test_read_submit_io(struct config *cfg)
 {
 	int phys_sector_size;
@@ -198,8 +214,8 @@ static int test_read_submit_io(struct config *cfg)
 	if (fd < 0)
 		return report(cfg, "test_read_submit_io (open)", errno);
 
-	if (fsync(fd))
-		return report(cfg, "test_read_submit_io (fsync)", errno);
+	if (clear_caches(fd, cfg->lba * phys_sector_size, cfg->mmap_len))
+		return report(cfg, "test_read_submit_io (clear_caches)", errno);
 
 	phys_sector_size = get_phys_sector_size(fd);
 
@@ -245,18 +261,14 @@ static int test_write_submit_io(struct config *cfg)
 	if (fd < 0)
 		return report(cfg, "test_write_submit_io (open)", errno);
 
+	if (clear_caches(fd, cfg->lba * phys_sector_size, cfg->mmap_len))
+		return report(cfg, "test_write_submit_io (clear_caches)", errno);
+
 	phys_sector_size = get_phys_sector_size(fd);
 
 	lseek(fd, cfg->lba * phys_sector_size, SEEK_SET);
 	if (read(fd, oldbuf, cfg->mmap_len) != cfg->mmap_len)
 		return report(cfg, "test_write_submit_io (read)", errno);
-
-	if (fsync(fd))
-		return report(cfg, "test_write_submit_io (fsync)", errno);
-
-	if (posix_fadvise(fd, cfg->lba * phys_sector_size, cfg->mmap_len,
-			  POSIX_FADV_DONTNEED))
-		return report(cfg, "test_write_submit_io (posix_fadvise)", errno);
 
 	memcpy(cfg->mmap_buf, cfg->rand_buf, cfg->mmap_len);
 
@@ -287,6 +299,8 @@ static int test_write_submit_io(struct config *cfg)
 	if (fd < 0)
 		return report(cfg, "test_write_submit_io (open2)", errno);
 
+	if (clear_caches(fd, cfg->lba * phys_sector_size, cfg->mmap_len))
+		return report(cfg, "test_write_submit_io (clear_caches)", errno);
 
 	lseek(fd, cfg->lba * phys_sector_size, SEEK_SET);
 	if (read(fd, buf, cfg->mmap_len) != cfg->mmap_len) {
